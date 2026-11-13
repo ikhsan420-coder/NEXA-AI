@@ -1,0 +1,14 @@
+# Only affects `vercel deploy` from the CLI. Git-based deployments clone the repo as-is.
+# The Android project and its source assets are not needed to build the web app + API.
+android/
+assets/
+.github/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.apk
+*.aab
+*.jks
+*.keystore

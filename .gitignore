@@ -17,3 +17,6 @@ android/.idea/
 *.aab
 *.jks
 *.keystore
+
+# Vercel
+.vercel/

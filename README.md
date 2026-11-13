@@ -3,13 +3,16 @@
 Asisten AI premium dengan desain **Dark Liquid Glass** (terinspirasi tata letak ChatGPT + iOS 26), ditenagai **Groq**.
 
 - **Frontend:** React + TypeScript + Vite + Tailwind CSS + Lucide Icons, PWA, Capacitor (Android)
-- **Backend:** Node.js (Express) yang menjadi satu-satunya jalur ke Groq. **API key hanya ada di server.**
+- **Backend:** Node.js (Express) yang menjadi satu-satunya jalur ke Groq. **API key hanya ada di server.** Dapat berjalan sebagai server biasa **atau** sebagai Vercel Functions (lihat [Deploy ke Vercel](#deploy-ke-vercel-hobby--gratis)).
 - **Code viewer:** Shiki (label bahasa, nomor baris, Copy, Download, scroll horizontal)
 
 ## Struktur
 
 ```
-server/            Backend Express (/api/chat, /api/models, /api/health)
+server/app.js      Aplikasi Express (tanpa listen): validasi, rate limit, CORS, Helmet, streaming
+server/index.js    Entry server biasa (lokal/VPS): app.listen()
+api/               Vercel Functions: chat.js, models.js, health.js (memakai server/app.js yang sama)
+vercel.json        Konfigurasi Vercel (build, durasi fungsi, header keamanan)
 src/               Frontend React + TypeScript
 public/            Ikon PWA, theme-init.js
 assets/            Sumber ikon & splash untuk Capacitor
@@ -41,7 +44,7 @@ Variabel penting (lihat `.env.example` untuk semuanya):
 | `GROQ_MODELS` | Opsional: batasi daftar model di pemilih model. Kosong = semua model chat dari akun Anda. |
 | `GROQ_DEFAULT_MODEL` | Opsional: model bawaan (harus ada di daftar live Groq). |
 | `CHAT_RATE_LIMIT` | Batas pesan per menit per IP (default 30). |
-| `TRUST_PROXY` | Isi `1` jika di belakang reverse proxy (Render, Railway, Nginx). |
+| `TRUST_PROXY` | Isi `1` jika di belakang reverse proxy (Nginx, dll.). Di Vercel diatur otomatis. |
 
 **Daftar model tidak dikarang.** Backend mengambilnya langsung dari endpoint resmi Groq `GET /openai/v1/models`, menyaring model non-chat (suara/moderasi), dan memvalidasi model yang dipilih terhadap daftar itu.
 
@@ -77,17 +80,74 @@ Pilih salah satu.
 
 Catatan: lewat `http://` (bukan HTTPS) tombol Copy tetap berfungsi (ada fallback), tetapi fitur *Install app/PWA* membutuhkan HTTPS.
 
-### B. Deploy backend lalu pasang sebagai PWA (disarankan untuk pemakaian harian)
+### B. Deploy ke internet lalu pasang sebagai PWA (disarankan untuk pemakaian harian)
 
-1. Deploy repo ini ke layanan Node.js (Render, Railway, Fly.io, VPS, dll.).
-   - Build command: `npm install && npm run build`
-   - Start command: `npm start`
-   - Environment: `GROQ_API_KEY`, `NODE_ENV=production`, `TRUST_PROXY=1`
-2. Buka URL HTTPS dari Chrome Android, menu ⋮ → **Install app / Add to Home screen**.
+Ikuti panduan [Deploy ke Vercel](#deploy-ke-vercel-hobby--gratis) di bawah (gratis, tanpa kartu kredit). Setelah itu buka URL HTTPS-nya di Chrome Android, menu ⋮ → **Install app / Add to Home screen**.
 
 ### C. Backend langsung di HP (Termux)
 
 Bisa, tetapi build frontend sebaiknya dilakukan di komputer. Salin folder `dist/` hasil `npm run build` ke HP, lalu di Termux: `pkg install nodejs`, `npm install --omit=dev`, isi `.env`, jalankan `npm start`, dan buka `http://localhost:8787`.
+
+## Deploy ke Vercel (Hobby / gratis)
+
+Satu deployment berisi **frontend statis** (hasil `npm run build`) dan **tiga fungsi serverless** (`/api/chat`, `/api/models`, `/api/health`). Fungsi-fungsi itu memakai kode Express yang sama dengan server lokal, jadi validasi input, rate limit, CORS, Helmet, dan streaming tetap sama. `GROQ_API_KEY` hanya dibaca dari environment variable server di Vercel.
+
+### Langkah dari HP Android
+
+Disarankan membuka Chrome → menu ⋮ → centang **Desktop site** agar semua tombol Vercel terlihat.
+
+1. Buka <https://vercel.com/signup>, pilih **Continue with GitHub**, dan izinkan akses.
+2. Ketuk **Add New… → Project**. Cari repo **NEXA-AI** lalu ketuk **Import**.
+   Jika repo tidak muncul: ketuk **Adjust GitHub App Permissions**, tambahkan repo `NEXA-AI`, lalu kembali.
+3. Di layar **Configure Project** biarkan semuanya apa adanya. *Framework Preset* terbaca **Vite**, dan perintah build otomatis dari `vercel.json`. Jangan ubah *Root Directory*.
+4. Buka bagian **Environment Variables**, lalu isi:
+   - **Key:** `GROQ_API_KEY`
+   - **Value:** tempel key Groq Anda (buat di <https://console.groq.com/keys>)
+   - Jika ada opsi **Sensitive**, aktifkan.
+   - Ketuk **Add**.
+5. Ketuk **Deploy** dan tunggu sekitar 1–3 menit sampai muncul "Congratulations".
+6. Salin domain produksi Anda, misalnya `https://nexa-ai-xxxx.vercel.app` (lihat di **Project → Domains**).
+
+**Cek hasilnya** (ganti dengan domain Anda):
+- `https://DOMAIN/api/health` harus menampilkan `{"ok":true,...,"configured":true}`.
+- `https://DOMAIN/api/models` harus menampilkan daftar model dari akun Groq Anda.
+- `https://DOMAIN/` membuka NEXA AI. Kirim pesan panjang dan pastikan teks muncul bertahap (streaming).
+
+**Mengganti/menambah variabel:** Project → **Settings → Environment Variables**. Setelah mengubah nilai, buka **Deployments → ⋯ → Redeploy**, karena perubahan hanya berlaku pada deployment baru.
+
+**Update otomatis:** setiap `git push` ke branch `main` akan men-deploy ulang.
+
+### Environment variables
+
+| Variabel | Wajib | Fungsi |
+|---|---|---|
+| `GROQ_API_KEY` | **Ya** | Key Groq. Hanya dibaca server. Jangan pernah di-commit. |
+| `GROQ_MODELS` | Tidak | Batasi daftar model (ID dipisah koma). Kosong = semua model chat dari akun Anda. |
+| `GROQ_DEFAULT_MODEL` | Tidak | Model bawaan (harus ada di daftar live Groq). |
+| `MAX_OUTPUT_TOKENS` | Tidak | Batas token jawaban. |
+| `CHAT_RATE_LIMIT` / `API_RATE_LIMIT` | Tidak | Batas permintaan per menit per IP (default 30 / 120). |
+| `CORS_ORIGINS` | Tidak | Origin tambahan yang boleh memanggil API. Aplikasi web di domain yang sama dan aplikasi Android (Capacitor) sudah diizinkan. |
+| `NEXA_SYSTEM_PROMPT` | Tidak | Mengganti system prompt bawaan. |
+
+`PORT`, `HOST`, dan `TRUST_PROXY` tidak perlu diisi di Vercel.
+
+### Menghubungkan APK ke backend Vercel
+
+- Saat menjalankan workflow **Build Android APK**, isi `api_base_url` dengan domain produksi Vercel Anda (`https://nexa-ai-xxxx.vercel.app`, tanpa `/` di akhir), atau
+- setelah aplikasi terpasang: **Settings → Server → Backend URL**.
+
+### Batasan serverless yang perlu diketahui
+
+- **Durasi fungsi 60 detik** (`maxDuration` di `vercel.json`). Jawaban yang lebih lama dari itu dihentikan dengan pesan error yang rapi; kirim ulang atau pilih model yang lebih cepat.
+- **Rate limit bersifat "best effort".** Penghitungnya disimpan di memori tiap instance, sehingga pada serverless batasnya tidak benar-benar global. Untuk perlindungan yang kuat, tambahkan aturan rate limit di **Project → Firewall** (ketersediaan tergantung paket Vercel Anda).
+- **Endpoint terbuka.** Siapa pun yang tahu URL Anda bisa memakai kuota Groq Anda. Pantau pemakaian di console Groq, jaga URL tidak tersebar luas, dan atur batas rate limit.
+- **Deployment Protection.** URL preview (bukan domain produksi) bisa meminta login Vercel dan menjawab `401` untuk APK. Gunakan domain produksi. Jika produksi pun `401`, cek **Settings → Deployment Protection**.
+- **Paket Hobby** ditujukan untuk pemakaian pribadi non-komersial.
+- **Streaming di Vercel** sudah diuji lewat simulasi lokal (lihat uji di bawah), tetapi perlu Anda konfirmasi sekali setelah deploy dengan langkah "Cek hasilnya" di atas.
+
+### Pengujian yang sudah dilakukan
+
+Dijalankan di lingkungan pengembangan tanpa akses ke Groq asli (Groq di-stub di batas `fetch`, kode lainnya asli): 26 uji lolos untuk health, filter model, CORS, validasi, batas ukuran, streaming bertahap, pembatalan upstream saat klien terputus, rate limit, serta 3 uji tanpa key. `vercel build` resmi berhasil membangun 3 fungsi (Node 22, 60 detik, ±2,3 MB) dan header keamanan. **Belum teruji:** deployment Vercel sungguhan dan Groq asli.
 
 ## 4. Build APK Android
 
