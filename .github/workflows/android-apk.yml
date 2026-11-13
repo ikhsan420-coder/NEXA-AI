@@ -1,46 +1,98 @@
 name: Build Android APK
 
-# Builds a debug APK on GitHub's cloud runners (Android SDK is preinstalled there).
-# Run it from the "Actions" tab -> "Build Android APK" -> "Run workflow".
+# Builds a debug APK on GitHub's cloud runners (the Android SDK is preinstalled there).
+#   - Manually: Actions -> "Build Android APK" -> Run workflow (optionally set api_base_url)
+#   - Automatically: on every push to main that touches the app (docs / backend-only changes are skipped)
 on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: 'HTTPS URL of your deployed NEXA backend (baked into the app; not a secret). Leave empty to set it later in Settings.'
+        description: 'HTTPS URL of your deployed NEXA backend, e.g. https://nexa-ai.vercel.app (baked into the app; not a secret). Empty = set it later in the app under Settings > Server.'
         required: false
         default: ''
+        type: string
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'api/**'
+      - 'server/**'
+      - 'vercel.json'
+      - '.vercelignore'
+      - '.env.example'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
+    name: Build debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Manual input wins; otherwise an optional repository variable API_BASE_URL (Settings > Variables > Actions).
+      API_BASE_URL_RAW: ${{ inputs.api_base_url || vars.API_BASE_URL || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Resolve backend URL
+        shell: bash
+        run: |
+          url="$(printf '%s' "$API_BASE_URL_RAW" | tr -d '[:space:]')"
+          while [[ "$url" == */ ]]; do url="${url%/}"; done
+          if [ -z "$url" ]; then
+            echo "::notice::No api_base_url given. The app will ask for the backend URL in Settings > Server."
+          elif [[ ! "$url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+            echo "::error::api_base_url must look like https://your-app.vercel.app (https, no path, no trailing slash)."
+            exit 1
+          else
+            echo "Backend URL: $url"
+          fi
+          echo "VITE_API_BASE_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build web app
-        env:
-          VITE_API_BASE_URL: ${{ inputs.api_base_url }}
         run: npm run build
 
-      - name: Generate icons and splash screens
-        run: npm run assets:icons && npm run cap:assets
+      - name: Check backend URL is baked into the app
+        shell: bash
+        run: |
+          if [ -n "$VITE_API_BASE_URL" ]; then
+            if grep -rqF "$VITE_API_BASE_URL" dist/assets; then
+              echo "OK: $VITE_API_BASE_URL is embedded in the web bundle."
+            else
+              echo "::error::VITE_API_BASE_URL was not found in the built bundle."
+              exit 1
+            fi
+          fi
+          if grep -rqE "gsk_[A-Za-z0-9]{16,}" dist; then
+            echo "::error::A Groq-style API key was found in the web bundle. Aborting."
+            exit 1
+          fi
 
-      - name: Add Android platform (if missing) and sync
+      - name: Add Android platform (if missing) and sync Capacitor
         run: |
           [ -d android ] || npx cap add android
           npx cap sync android
@@ -49,10 +101,25 @@ jobs:
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - uses: actions/upload-artifact@v4
+      - name: Verify APK exists
+        run: |
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
           name: nexa-ai-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          {
+            echo "### NEXA AI debug APK"
+            echo "Download **nexa-ai-debug-apk** from the *Artifacts* section of this run (a ZIP containing \`app-debug.apk\`)."
+            if [ -n "$VITE_API_BASE_URL" ]; then echo "Backend URL baked in: \`$VITE_API_BASE_URL\`"; else echo "No backend URL baked in: set it in the app under **Settings > Server**."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
