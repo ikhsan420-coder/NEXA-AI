@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#121733"/>
+      <stop offset="1" stop-color="#080A10"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.25" cy="0.15" r="0.9">
+      <stop offset="0" stop-color="#7C8CFF" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#38BDF8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#080A10" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A5B4FF"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="116" fill="url(#glow)"/>
+  <rect x="1" y="1" width="510" height="255" rx="116" fill="url(#sheen)"/>
+  <rect x="1.5" y="1.5" width="509" height="509" rx="116" fill="none" stroke="#fff" stroke-opacity="0.14" stroke-width="3"/>
+  <g transform="translate(256 256) scale(1) translate(-256 -256)">
+  <path d="M152 362 V150 L360 362 V150" fill="none" stroke="url(#stroke)" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M398 104 l11 29 29 11 -29 11 -11 29 -11 -29 -29 -11 29 -11z" fill="#ffffff" fill-opacity="0.95"/></g></svg>

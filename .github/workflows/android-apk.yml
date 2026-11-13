@@ -1,0 +1,58 @@
+name: Build Android APK
+
+# Builds a debug APK on GitHub's cloud runners (Android SDK is preinstalled there).
+# Run it from the "Actions" tab -> "Build Android APK" -> "Run workflow".
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'HTTPS URL of your deployed NEXA backend (baked into the app; not a secret). Leave empty to set it later in Settings.'
+        required: false
+        default: ''
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        env:
+          VITE_API_BASE_URL: ${{ inputs.api_base_url }}
+        run: npm run build
+
+      - name: Generate icons and splash screens
+        run: npm run assets:icons && npm run cap:assets
+
+      - name: Add Android platform (if missing) and sync
+        run: |
+          [ -d android ] || npx cap add android
+          npx cap sync android
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexa-ai-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
