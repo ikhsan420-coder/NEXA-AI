@@ -232,3 +232,31 @@ on public.audit_logs for select to authenticated
 using (public.has_team_role(array['Owner', 'Admin']));
 
 -- Audit log writes are intentionally reserved for trusted server-side code using the service role.
+
+
+-- Automatically create a profile for each Auth user. The role is NOT inferred
+-- from user-editable metadata; team membership is assigned by trusted server code.
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, email, display_name)
+  values (
+    new.id,
+    coalesce(new.email, ''),
+    nullif(new.raw_user_meta_data ->> 'name', '')
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_nexa on auth.users;
+create trigger on_auth_user_created_nexa
+after insert on auth.users
+for each row execute procedure public.handle_new_auth_user();
