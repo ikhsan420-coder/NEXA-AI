@@ -7,8 +7,9 @@ android {
         applicationId "com.nexaai.assistant"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Set by the release workflow from package.json (e.g. 1.2.3 -> code 10203). Local builds fall back to 1 / "1.0".
+        versionCode Integer.parseInt(System.getenv("NEXA_VERSION_CODE") ?: "1")
+        versionName System.getenv("NEXA_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +17,28 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Stable signing key (provided by CI from the ANDROID_SIGNING secret). Android only installs an update over an
+    // existing app when both APKs are signed with the same key, so every release must use this one.
+    signingConfigs {
+        nexa {
+            if (System.getenv("NEXA_KEYSTORE_PATH")) {
+                storeFile file(System.getenv("NEXA_KEYSTORE_PATH"))
+                storePassword System.getenv("NEXA_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("NEXA_KEY_ALIAS")
+                keyPassword System.getenv("NEXA_KEYSTORE_PASSWORD")
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (System.getenv("NEXA_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.nexa
+            }
+        }
         release {
+            if (System.getenv("NEXA_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.nexa
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

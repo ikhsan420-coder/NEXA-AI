@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Info, Moon, Server, Sun, Trash2, X } from 'lucide-react';
+import { Check, Info, Moon, RefreshCw, Server, Sparkles, Sun, Trash2, X } from 'lucide-react';
 import type { ModelInfo, Settings } from '../types';
 import { ModelSelector } from './ModelSelector';
 import { Logo } from './Logo';
@@ -15,6 +15,10 @@ interface Props {
   onRetryModels: () => void;
   onClearHistory: () => void;
   onClose: () => void;
+  checkStatus: string;
+  checkMessage: string;
+  onCheckUpdate: () => void;
+  onShowWhatsNew: () => void;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -26,7 +30,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function SettingsModal({ settings, models, modelsLoading, modelsError, chatCount, onChange, onRetryModels, onClearHistory, onClose }: Props) {
+export function SettingsModal({ settings, models, modelsLoading, modelsError, chatCount, onChange, onRetryModels, onClearHistory, onClose, checkStatus, checkMessage, onCheckUpdate, onShowWhatsNew }: Props) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [serverDraft, setServerDraft] = useState(settings.serverUrl);
 
@@ -163,6 +167,19 @@ export function SettingsModal({ settings, models, modelsLoading, modelsError, ch
                 <div className="truncate text-xs text-muted">com.nexaai.assistant · Powered by Groq</div>
               </div>
             </div>
+            <div className="flex gap-2">
+              <button className="glass-btn flex-1" onClick={onCheckUpdate} disabled={checkStatus === 'checking'}>
+                <RefreshCw size={15} className={checkStatus === 'checking' ? 'animate-spin' : ''} /> Check for updates
+              </button>
+              <button className="glass-btn flex-1" onClick={onShowWhatsNew}>
+                <Sparkles size={15} /> What's new
+              </button>
+            </div>
+            {checkMessage && (
+              <p className="text-sm text-muted" role="status">
+                {checkMessage}
+              </p>
+            )}
           </Section>
         </div>
       </div>

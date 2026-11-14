@@ -1,0 +1,24 @@
+[
+  {
+    "version": "1.1.0",
+    "date": "2026-11-14",
+    "title": "Automatic updates & What's new",
+    "changes": [
+      "NEXA AI now tells you when a new version is available and downloads it for you with a progress bar.",
+      "After an update, a What's new screen shows what changed.",
+      "New: Settings → About → Check for updates.",
+      "Updates are signed with a permanent key, so future versions install over this one."
+    ]
+  },
+  {
+    "version": "1.0.0",
+    "date": "2026-11-13",
+    "title": "First release",
+    "changes": [
+      "Dark Liquid Glass design with light mode.",
+      "Streaming chat powered by Groq, with a live model picker.",
+      "Professional code viewer: language label, line numbers, copy and download.",
+      "Local chat history: create, rename, search and delete."
+    ]
+  }
+]

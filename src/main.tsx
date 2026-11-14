@@ -13,7 +13,12 @@ createRoot(document.getElementById('root')!).render(
 // PWA: register the service worker on the web only. The native Android shell serves assets locally.
 if ('serviceWorker' in navigator && !Capacitor.isNativePlatform() && import.meta.env.PROD) {
   window.addEventListener('load', () => {
+    const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    // A new service worker took over an already-controlled page: offer a reload.
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) window.dispatchEvent(new Event('nexa:web-update'));
+    });
   });
 }
 

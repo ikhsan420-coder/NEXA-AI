@@ -12,6 +12,11 @@ import { InputBar } from './components/InputBar';
 import { ModelSelector } from './components/ModelSelector';
 import { SettingsModal } from './components/SettingsModal';
 import { Toast } from './components/Toast';
+import { UpdateDialog } from './components/UpdateDialog';
+import { WhatsNewDialog } from './components/WhatsNewDialog';
+import { useUpdater } from './store/useUpdater';
+import { CHANGELOG, CURRENT_VERSION, markVersionSeen, pendingWhatsNew } from './lib/changelog';
+import type { ChangelogEntry } from './lib/version';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => {
@@ -25,6 +30,12 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [whatsNew, setWhatsNew] = useState<ChangelogEntry[]>(() => pendingWhatsNew());
+  const updater = useUpdater(CURRENT_VERSION, whatsNew.length === 0);
+  const closeWhatsNew = () => {
+    markVersionSeen();
+    setWhatsNew([]);
+  };
 
   const chat = useChatStore({ model: settings.model, customInstructions: settings.customInstructions });
   const { active, generating } = chat;
@@ -177,8 +188,14 @@ export default function App() {
             setToast('Chat history cleared.');
           }}
           onClose={() => setSettingsOpen(false)}
+          checkStatus={updater.checkStatus}
+          checkMessage={updater.checkMessage}
+          onCheckUpdate={() => void updater.checkNow()}
+          onShowWhatsNew={() => setWhatsNew(CHANGELOG.slice(0, 3))}
         />
       )}
+      {whatsNew.length === 0 && <UpdateDialog updater={updater} />}
+      <WhatsNewDialog entries={whatsNew} onClose={closeWhatsNew} />
       <Toast message={toast} onDone={() => setToast(null)} />
     </ThemeContext.Provider>
   );

@@ -1,0 +1,158 @@
+name: Release APK
+
+# Builds a SIGNED APK and publishes it as a GitHub Release. The app checks this release for updates.
+#   - Manually: Actions -> "Release APK" -> Run workflow (enter the version, e.g. 1.1.1)
+#   - Or push a tag such as v1.1.1 (the version in package.json is set from the tag)
+# Requires ONE repository secret: ANDROID_SIGNING  (format: alias|password|base64-keystore)
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number, e.g. 1.1.1 (must be higher than the previous release)'
+        required: true
+        type: string
+      api_base_url:
+        description: 'HTTPS backend URL baked into the app'
+        required: false
+        default: 'https://nexa-ai-kappa-seven.vercel.app'
+        type: string
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build signed APK and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      INPUT_VERSION: ${{ inputs.version }}
+      INPUT_API: ${{ inputs.api_base_url }}
+      SIGNING: ${{ secrets.ANDROID_SIGNING }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Resolve version and backend URL
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then ver="${GITHUB_REF_NAME#v}"; else ver="$INPUT_VERSION"; fi
+          ver="$(printf '%s' "$ver" | tr -d '[:space:]')"; ver="${ver#v}"
+          if [[ ! "$ver" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Version must look like 1.2.3 (got '$ver')."; exit 1
+          fi
+          major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"; patch="${BASH_REMATCH[3]}"
+          if [ "$minor" -gt 99 ] || [ "$patch" -gt 99 ]; then echo "::error::minor and patch must be 0-99."; exit 1; fi
+          code=$((major*10000 + minor*100 + patch))
+          url="${INPUT_API:-https://nexa-ai-kappa-seven.vercel.app}"
+          url="$(printf '%s' "$url" | tr -d '[:space:]')"; while [[ "$url" == */ ]]; do url="${url%/}"; done
+          if [[ ! "$url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then echo "::error::api_base_url must be https://host (no path)."; exit 1; fi
+          if gh release view "v$ver" >/dev/null 2>&1; then echo "::error::Release v$ver already exists. Use a higher version."; exit 1; fi
+          {
+            echo "RELEASE_VERSION=$ver"
+            echo "NEXA_VERSION_NAME=$ver"
+            echo "NEXA_VERSION_CODE=$code"
+            echo "VITE_API_BASE_URL=$url"
+          } >> "$GITHUB_ENV"
+          echo "Version $ver (code $code), backend $url"
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          if [ -z "$SIGNING" ]; then
+            echo "::error::Repository secret ANDROID_SIGNING is missing. Add it under Settings > Secrets and variables > Actions."; exit 1
+          fi
+          alias="${SIGNING%%|*}"; rest="${SIGNING#*|}"
+          pass="${rest%%|*}"; b64="${rest#*|}"
+          if [ -z "$alias" ] || [ -z "$pass" ] || [ -z "$b64" ] || [ "$rest" = "$SIGNING" ]; then
+            echo "::error::ANDROID_SIGNING has the wrong format (expected alias|password|base64)."; exit 1
+          fi
+          echo "::add-mask::$pass"
+          ks="$RUNNER_TEMP/nexa-release.p12"
+          printf '%s' "$b64" | base64 -d > "$ks"
+          {
+            echo "NEXA_KEYSTORE_PATH=$ks"
+            echo "NEXA_KEYSTORE_PASSWORD=$pass"
+            echo "NEXA_KEY_ALIAS=$alias"
+          } >> "$GITHUB_ENV"
+          keytool -list -keystore "$ks" -storepass "$pass" -storetype PKCS12 >/dev/null && echo "Keystore OK"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Set version in package.json
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Check bundle (backend URL present, no API key)
+        shell: bash
+        run: |
+          grep -rqF "$VITE_API_BASE_URL" dist/assets || { echo "::error::Backend URL not found in bundle."; exit 1; }
+          if grep -rqE "gsk_[A-Za-z0-9]{16,}" dist; then echo "::error::API key found in bundle."; exit 1; fi
+
+      - name: Sync Capacitor
+        run: |
+          [ -d android ] || npx cap add android
+          npx cap sync android
+
+      - name: Assemble signed APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK signature and version
+        shell: bash
+        run: |
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$apk"
+          bt="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$bt/apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/cert.txt"
+          grep -q "Signer #1 certificate" "$RUNNER_TEMP/cert.txt"
+          if grep -qi "Android Debug" "$RUNNER_TEMP/cert.txt"; then echo "::error::APK is signed with the default debug key, not the release key."; exit 1; fi
+          "$bt/aapt2" dump badging "$apk" | grep -E "package:|versionName" | head -2
+          "$bt/aapt2" dump badging "$apk" | grep -q "versionName='$RELEASE_VERSION'"
+          mkdir -p out && cp "$apk" "out/NEXA-AI-v$RELEASE_VERSION.apk"
+          ls -lh out
+
+      - name: Publish GitHub Release
+        shell: bash
+        run: |
+          node -e '
+            const cl = require("./src/changelog.json");
+            const v = process.env.RELEASE_VERSION;
+            const e = cl.find(x => x.version === v);
+            const body = e ? `## ${e.title}\n\n` + e.changes.map(c => `- ${c}`).join("\n") : `NEXA AI ${v}`;
+            require("fs").writeFileSync("notes.md", body + "\n");
+          '
+          gh release create "v$RELEASE_VERSION" "out/NEXA-AI-v$RELEASE_VERSION.apk" \
+            --title "NEXA AI $RELEASE_VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+
+      - name: Summary
+        run: echo "Published release v$RELEASE_VERSION with NEXA-AI-v$RELEASE_VERSION.apk" >> "$GITHUB_STEP_SUMMARY"
