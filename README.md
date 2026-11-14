@@ -207,3 +207,15 @@ Lalu atur signing di Android Studio (**Build → Generate Signed Bundle / APK**)
 | `npm run assets:icons` | Hasilkan ulang ikon PWA & sumber ikon/splash |
 | `npm run cap:assets` | Hasilkan ikon/splash native Android |
 | `npm run android:debug` | Sync + build APK debug |
+
+## In-app updates & releases
+
+The Android app checks GitHub Releases for a newer version, downloads the APK with a progress bar and opens the system installer (Android always asks the user to tap *Install*). After an update, a *What's new* screen shows the notes from `src/changelog.json`.
+
+**Publishing an update**
+1. Add an entry at the top of `src/changelog.json` (new `version`, `title`, `date`, `changes`).
+2. Commit and push to `main`.
+3. GitHub → Actions → **Release APK** → Run workflow → enter the version (e.g. `1.1.1`, must be higher than the last one).
+4. The workflow builds a signed APK and creates the Release `v1.1.1`. Installed apps will offer it on next launch (or Settings → About → Check for updates).
+
+**One-time setup:** create the repository secret `ANDROID_SIGNING` (format `alias|password|base64-keystore`). Every update must be signed with the same key, otherwise Android refuses to install it over the old app. Keep a private backup of the keystore and never commit it.
