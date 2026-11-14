@@ -132,6 +132,25 @@ router.post('/invitations', async (req, res) => {
       return res.status(502).json({ error: { code: 'invite_record_failed', message: 'Invitation email was sent, but its team record could not be saved. Contact the Owner before retrying.' } });
     }
 
+    const invitedUserId = inviteData?.id || inviteData?.user?.id;
+    if (!invitedUserId) {
+      return res.status(502).json({ error: { code: 'invite_user_missing', message: 'Supabase sent the invitation but did not return the invited user ID. Ask the Owner to verify the invitation.' } });
+    }
+    const memberResponse = await fetch(`${c.url}/rest/v1/team_members`, {
+      method: 'POST',
+      headers: {
+        apikey: c.service,
+        Authorization: `Bearer ${c.service}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({ user_id: invitedUserId, role, invited_by: user.id }),
+    });
+    if (!memberResponse.ok) {
+      console.error('[developer-control/invitations] team membership save failed');
+      return res.status(502).json({ error: { code: 'invite_membership_failed', message: 'Invitation was sent, but the team role could not be assigned. Owner intervention is required.' } });
+    }
+
     res.status(201).json({ ok: true, email, role, expiresAt });
   } catch (error) {
     console.error('[developer-control/invitations]', error?.message || 'unknown error');
