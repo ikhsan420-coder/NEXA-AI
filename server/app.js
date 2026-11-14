@@ -6,6 +6,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import developerControlRouter from './developer-control.js';
 
 import { validateChatBody } from './validate.js';
 import {
@@ -119,6 +120,7 @@ const chatLimiter = rateLimit({
   message: { error: { code: 'rate_limited', message: 'Too many messages. Please wait a minute and try again.' } },
 });
 app.use('/api', apiLimiter);
+app.use('/api/developer', developerControlRouter);
 
 const sendError = (res, status, code, message, extra = {}) =>
   res.status(status).json({ error: { code, message, ...extra } });
